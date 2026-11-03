@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>《盲猎》音频引擎 · 自测 (audio-test)</title>
+<style>
+  html, body { background: #0b0d10; color: #c9d1d9; }
+  body { margin: 0; padding: 18px 22px; font: 13px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #e6edf3; letter-spacing: .02em; }
+  .sub { color: #7d8590; margin: 0 0 14px; font-size: 12px; }
+  pre#result {
+    margin: 0; padding: 14px 16px; white-space: pre-wrap; word-break: break-word;
+    background: #11151a; border: 1px solid #21262d; border-radius: 6px;
+    color: #c9d1d9; min-height: 200px;
+  }
+  .fail { color: #ff7b72; }
+  .ok { color: #56d364; }
+</style>
+</head>
+<body>
+  <h1>《盲猎》程序化 WebAudio 引擎 · 自测</h1>
+  <p class="sub">js/audio.js → window.AudioEngine：契约 / 300 帧 update / 23 个 play 事件 / 鲁棒性 / 无音频 no-op</p>
+  <pre id="result">RUNNING …</pre>
+
+  <script src="../js/audio.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    /* ---------------- 基础设施 ---------------- */
+    var logLines = [];
+    var exceptions = [];      // 未捕获异常
+    var failures = [];        // 断言失败
+    var noopHardFail = null;  // 无音频 no-op 路径硬失败
+    var rendered = false;
+
+    var stats = {
+      updates: 0,
+      plays: 0,
+      robustCalls: 0,
+      maxVoices: 0,
+      dropped: 0,
+      eventsOk: 0
+    };
+
+    function log(s) { logLines.push(String(s)); }
+
+    function logFail(s) {
+      failures.push(String(s));
+      logLines.push('  ✗ ' + s);
+    }
+
+    function check(cond, msg) {
+      if (cond) { logLines.push('  ✓ ' + msg); }
+      else { logFail(msg); }
+      return cond;
+    }
+
+    window.addEventListener('error', function (ev) {
+      try {
+        exceptions.push(String(ev.message || ev.error || 'unknown error'));
+      } catch (e) { /* ignore */ }
+    });
+    window.addEventListener('unhandledrejection', function (ev) {
+      try {
+        exceptions.push('unhandledrejection: ' + String((ev && ev.reason && ev.reason.message) || ev.reason));
+      } catch (e) { /* ignore */ }
+    });
+
+    function render(status, detailMsg) {
+      if (rendered) return;
+      rendered = true;
+
+      var finalLine = (status === 'ok') ? 'AUDIO_SELFTEST_OK' : ('AUDIO_SELFTEST_FAIL: ' + (detailMsg || 'unknown'));
+      var lines = logLines.slice();
+      lines.push('');
+      lines.push('===== 汇总 =====');
+      lines.push('update 帧数            : ' + stats.updates);
+      lines.push('play 调用次数          : ' + stats.plays + '（23 事件 ×2 轮）');
+      lines.push('鲁棒性调用次数          : ' + stats.robustCalls);
+      lines.push('play 事件覆盖          : ' + stats.eventsOk + '/23');
+      lines.push('观测最大活动声源        : ' + stats.maxVoices + '（上限 40）');
+      lines.push('因声源上限丢弃          : ' + stats.dropped);
+      lines.push('未捕获异常              : ' + exceptions.length);
+      lines.push('断言失败                : ' + failures.length);
+      if (noopHardFail) lines.push('无音频 no-op 路径          : 失败 — ' + noopHardFail);
+      if (failures.length) {
+        lines.push('');
+        lines.push('失败明细：');
+        for (var i = 0; i < failures.length; i++) lines.push('  - ' + failures[i]);
+      }
+      if (exceptions.length) {
+        lines.push('');
+        lines.push('未捕获异常明细：');
+        for (var j = 0; j < exceptions.length; j++) lines.push('  - ' + exceptions[j]);
+      }
+      lines.push('');
+      lines.push(finalLine);
+
+      var pre = document.getElementById('result');
+      pre.textContent = lines.join('\n');
+      pre.className = (status === 'ok') ? 'ok' : 'fail';
+      document.title = finalLine;
+      document.body.setAttribute('data-audio-selftest', status);
+      try { window.AUDIO_SELFTEST = finalLine; } catch (e) { /* ignore */ }
+      try {
+        if (window.console && console.log) console.log(finalLine);
+      } catch (e) { /* ignore */ }
+    }
+
+    function failNow(e) {
+      render('fail', (e && e.message) ? e.message : String(e));
+    }
+
+    /* ---------------- 状态构造 ---------------- */
+    var CYCLE = ['patrol', 'investigate', 'chase', 'search'];
+    var MOVE = ['idle', 'sneak', 'walk', 'sprint'];
+
+    function makeState(over) {
+      var s = {
+        gameState: 'playing',
+        playerX: 10.5, playerY: 8.5,
+        monsterX: 22.0, monsterY: 14.0,
+        monsterState: 'patrol',
+        monsterDistance: 0, monsterVisible: false,
+        moveState: 'walk',
+        exhausted: false, hidden: false, holdingBreath: false,
+        breath: 0.85, stamina: 0.8, power: 0.34, battery: 0.7,
+        flashlightOn: true, listening: false,
+        danger: 0.25, heartbeat: 0.30
+      };
+      if (over) {
+        for (var k in over) {
+          if (Object.prototype.hasOwnProperty.call(over, k)) s[k] = over[k];
+        }
+      }
+      var dx = s.monsterX - s.playerX;
+      var dy = s.monsterY - s.playerY;
+      s.monsterDistance = Math.sqrt(dx * dx + dy * dy);
+      s.monsterVisible = s.monsterDistance < 6;
+      return s;
+    }
+
+    function safeCall(label, fn) {
+      stats.robustCalls++;
+      try {
+        fn();
+        return true;
+      } catch (e) {
+        exceptions.push(label + ' 抛出异常: ' + ((e && e.message) ? e.message : String(e)));
+        logFail('鲁棒性：' + label + ' 抛出了异常：' + ((e && e.message) ? e.message : String(e)));
+        return false;
+      }
+    }
+
+    /* ---------------- 阶段 0：契约检查 ---------------- */
+    var METHODS = ['init', 'resume', 'setMasterVolume', 'setListener', 'update',
+      'play', 'startAmbience', 'stopAmbience', 'isPlaying'];
+    var EVENTS = ['step_walk', 'step_sprint', 'step_sneak', 'door',
+      'breaker_loop_start', 'breaker_loop_stop', 'breaker_done',
+      'throw', 'impact', 'pickup', 'note', 'gate', 'lightning',
+      'monster_click', 'monster_step', 'monster_screech', 'monster_search',
+      'sonar', 'gasp', 'battery_low', 'death', 'win', 'ui_click'];
+
+    var A = window.AudioEngine;
+
+    function phaseContract() {
+      log('== 1. API 契约 ==');
+      if (!A) throw new Error('window.AudioEngine 未定义（js/audio.js 加载失败？）');
+      check(typeof A === 'object' || typeof A === 'function', 'window.AudioEngine 存在');
+      for (var i = 0; i < METHODS.length; i++) {
+        check(typeof A[METHODS[i]] === 'function', '方法 ' + METHODS[i] + '() 是函数');
+      }
+      check(typeof A.ready === 'boolean', '属性 ready 是 boolean');
+      check(A._debug && A._debug.version, '调试信息 _debug 可用（version=' + (A._debug && A._debug.version) + '）');
+      if (!A._debug || A._debug.supported !== true) {
+        log('  ! 本运行环境未提供 AudioContext —— 引擎将走 no-op 安全路径');
+      }
+    }
+
+    /* ---------------- 阶段 1：init 前的 no-op 安全 ---------------- */
+    function phasePreInit() {
+      log('');
+      log('== 2. init 之前的调用（必须安全 no-op）==');
+      safeCall('pre-init update', function () { A.update(1 / 60, makeState()); });
+      safeCall('pre-init play', function () { A.play('monster_click', { x: 3, y: 4, vol: 1 }); });
+      safeCall('pre-init isPlaying', function () { A.isPlaying('monster_click'); });
+      safeCall('pre-init startAmbience', function () { A.startAmbience(); });
+      safeCall('pre-init stopAmbience', function () { A.stopAmbience(); });
+      safeCall('pre-init setMasterVolume', function () { A.setMasterVolume(0.5); });
+      safeCall('pre-init setListener', function () { A.setListener(1, 2); });
+      check(exceptions.length === 0, 'init 之前所有调用均无异常');
+    }
+
+    /* ---------------- 阶段 2：init / resume ---------------- */
+    function phaseInit(done) {
+      log('');
+      log('== 3. init / resume ==');
+      safeCall('init()', function () { A.init(); });
+      safeCall('init() 第二次（幂等）', function () { A.init(); });
+      safeCall('resume()', function () { A.resume(); });
+      log('  ready = ' + A.ready + '，_debug.supported = ' + (A._debug && A._debug.supported) +
+        '，ctxState = ' + (A._debug && A._debug.ctxState));
+
+      var waits = 0;
+      (function waitReady() {
+        if (A.ready || (A._debug && A._debug.supported !== true) || waits >= 12) {
+          done();
+          return;
+        }
+        waits++;
+        setTimeout(waitReady, 100); // 等待 AudioContext 进入 running（无头浏览器）
+      })();
+    }
+
+    /* ---------------- 阶段 3：300 帧 update ---------------- */
+    function phaseFrames() {
+      log('');
+      log('== 4. 300 帧 update（完整 state 字段）==');
+      var before = stats.updates;
+      for (var i = 0; i < 300; i++) {
+        var gs = (i < 270) ? 'playing' : (i < 280 ? 'dead' : (i < 290 ? 'won' : 'paused'));
+        var st = makeState({
+          gameState: gs,
+          monsterState: CYCLE[i % CYCLE.length],
+          moveState: MOVE[i % MOVE.length],
+          exhausted: (i % 17 === 0),
+          hidden: (i % 23 === 0),
+          holdingBreath: (i % 29 === 0),
+          breath: 0.5 + 0.5 * Math.sin(i / 20),
+          stamina: 0.5 + 0.5 * Math.cos(i / 25),
+          power: i / 300,
+          battery: 1 - i / 300,
+          flashlightOn: (i % 2 === 0),
+          listening: (i % 31 === 0),
+          danger: 0.5 + 0.5 * Math.sin(i / 15),
+          heartbeat: 0.5 + 0.5 * Math.cos(i / 18),
+          playerX: 10.5,
+          playerY: 8.5,
+          monsterX: 10.5 + Math.cos(i / 10) * 12,
+          monsterY: 8.5 + Math.sin(i / 10) * 12
+        });
+        A.setListener(st.playerX, st.playerY);
+        A.update(1 / 60, st);
+        stats.updates++;
+        var v = (A._debug && A._debug.voices) || 0;
+        if (v > stats.maxVoices) stats.maxVoices = v;
+      }
+      check(stats.updates - before === 300, '执行 300 帧 update 无异常');
+      check(stats.maxVoices <= 40, '活动声源未超过上限 40（观测最大 ' + stats.maxVoices + '）');
+
+      // 死亡后静默段
+      for (var d = 0; d < 20; d++) {
+        A.update(1 / 60, makeState({ gameState: 'dead', danger: 1, heartbeat: 1, breath: 0.1 }));
+        stats.updates++;
+      }
+      check(true, '死亡状态额外 20 帧 update 无异常（共 ' + stats.updates + ' 帧）');
+    }
+
+    /* ---------------- 阶段 4：环境层 / 循环 / 全部 play 事件 ---------------- */
+    function phasePlayAll() {
+      log('');
+      log('== 5. 循环 / 环境层 / isPlaying ==');
+
+      safeCall('startAmbience', function () { A.startAmbience(); });
+      check(A.isPlaying('ambience') === true, 'startAmbience 后 isPlaying("ambience") === true');
+
+      safeCall('breaker_loop_start', function () { A.play('breaker_loop_start', { vol: 0.5 }); });
+      check(A.isPlaying('breaker_loop_start') === true, 'breaker_loop_start 后 isPlaying === true');
+      safeCall('breaker_loop_stop', function () { A.play('breaker_loop_stop'); });
+      check(A.isPlaying('breaker_loop_start') === false, 'breaker_loop_stop 后 isPlaying === false');
+
+      log('');
+      log('== 6. 全部 23 个 play 事件（两轮：带世界坐标 / 不带参数）==');
+      var i, name;
+      // 第一轮：带世界坐标（声像 + 距离衰减）
+      for (i = 0; i < EVENTS.length; i++) {
+        name = EVENTS[i];
+        var x = (i % 2 === 0) ? 10.5 + 4 : 10.5 - 9;
+        try {
+          A.play(name, { x: x, y: 8.5 + (i % 3), vol: 0.9 });
+          stats.plays++;
+        } catch (e) {
+          exceptions.push('play(' + name + ', opts) 抛出异常: ' + ((e && e.message) ? e.message : String(e)));
+        }
+      }
+      // 第二轮：不带参数（默认位于听者处）
+      for (i = 0; i < EVENTS.length; i++) {
+        name = EVENTS[i];
+        try {
+          A.play(name);
+          stats.plays++;
+        } catch (e) {
+          exceptions.push('play(' + name + ') 抛出异常: ' + ((e && e.message) ? e.message : String(e)));
+        }
+      }
+      check(exceptions.length === 0, '23 个事件 ×2 轮调用均未抛异常（共 ' + stats.plays + ' 次）');
+
+      // 事件是否真的被派发（无音频环境 play 安全 no-op，不计覆盖）
+      var dbg = A._debug || {};
+      var dispatched = dbg.dispatched || {};
+      var missing = [];
+      for (i = 0; i < EVENTS.length; i++) {
+        if (!dispatched[EVENTS[i]]) missing.push(EVENTS[i]);
+      }
+      stats.eventsOk = EVENTS.length - missing.length;
+      if (A.ready) {
+        check(missing.length === 0, '23 个事件全部派发' + (missing.length ? '（缺少：' + missing.join(',') + '）' : ''));
+      } else {
+        log('  ! 无音频环境：play 安全 no-op，派发覆盖不计入断言');
+      }
+
+      var until = (A.ready && A.isPlaying('monster_click')) ? true : false;
+      check(!A.ready || until, '刚播放的 monster_click 在 isPlaying 中为 true');
+      check(A.isPlaying('__never__') === false, '未播放的未知声音 isPlaying === false');
+      check(A.isPlaying('breaker_loop_stop') === false, 'breaker_loop_stop 的 isPlaying 恒为 false');
+    }
+
+    /* ---------------- 阶段 5：鲁棒性 ---------------- */
+    function phaseRobustness() {
+      log('');
+      log('== 7. 鲁棒性（非法参数 / 重复调用 / 缺失字段）==');
+      var st = makeState();
+
+      safeCall('update() 无参数', function () { A.update(); });
+      safeCall('update(0)', function () { A.update(0); });
+      safeCall('update(NaN)', function () { A.update(NaN); });
+      safeCall('update(Infinity)', function () { A.update(Infinity); });
+      safeCall('update(-5, state)', function () { A.update(-5, st); });
+      safeCall('update(2, state)', function () { A.update(2, st); });
+      safeCall('update(1/60, null)', function () { A.update(1 / 60, null); });
+      safeCall('update(1/60, undefined)', function () { A.update(1 / 60, undefined); });
+      safeCall('update(1/60, {})', function () { A.update(1 / 60, {}); });
+      safeCall('update(1/60, 非法字段)', function () {
+        A.update(1 / 60, {
+          gameState: 123, playerX: 'x', monsterDistance: NaN, breath: null,
+          danger: 'high', heartbeat: {}, moveState: null, hidden: 'yes', holdingBreath: 1
+        });
+      });
+
+      safeCall('play() 无参数', function () { A.play(); });
+      safeCall('play(null)', function () { A.play(null); });
+      safeCall('play(42)', function () { A.play(42); });
+      safeCall('play("__nope__")', function () { A.play('__nope__'); });
+      safeCall('play(name, null)', function () { A.play('monster_click', null); });
+      safeCall('play(name, 非法 opts)', function () { A.play('monster_click', { x: 'a', y: {}, vol: 'loud' }); });
+      safeCall('play(name, 极远坐标)', function () { A.play('monster_step', { x: 1e9, y: -1e9 }); });
+      safeCall('play(name, NaN 坐标)', function () { A.play('monster_step', { x: NaN, y: Infinity }); });
+      safeCall('play(name, vol 越界)', function () { A.play('ui_click', { vol: 99 }); });
+      safeCall('play 未知名字 + 越界参数', function () { A.play('__nope__', { x: 1, y: 2, vol: -3 }); });
+
+      safeCall('setListener() 无参数', function () { A.setListener(); });
+      safeCall('setListener(NaN, Infinity)', function () { A.setListener(NaN, Infinity); });
+      safeCall('setListener("a", "b")', function () { A.setListener('a', 'b'); });
+      safeCall('setListener(1e9, -1e9)', function () { A.setListener(1e9, -1e9); });
+      safeCall('setListener 恢复合法值', function () { A.setListener(10.5, 8.5); });
+
+      safeCall('setMasterVolume()', function () { A.setMasterVolume(); });
+      safeCall('setMasterVolume(NaN)', function () { A.setMasterVolume(NaN); });
+      safeCall('setMasterVolume(-5)', function () { A.setMasterVolume(-5); });
+      safeCall('setMasterVolume(9)', function () { A.setMasterVolume(9); });
+      safeCall('setMasterVolume("x")', function () { A.setMasterVolume('x'); });
+      safeCall('setMasterVolume(0.9) 恢复', function () { A.setMasterVolume(0.9); });
+
+      safeCall('isPlaying()', function () { A.isPlaying(); });
+      safeCall('isPlaying(null)', function () { A.isPlaying(null); });
+      safeCall('isPlaying("__nope__")', function () { A.isPlaying('__nope__'); });
+
+      safeCall('startAmbience 重复', function () { A.startAmbience(); A.startAmbience(); });
+      check(!A.ready || A.isPlaying('ambience') === true, '重复 startAmbience 后环境层仍为播放态');
+      safeCall('stopAmbience 重复', function () { A.stopAmbience(); A.stopAmbience(); });
+      check(A.isPlaying('ambience') === false, 'stopAmbience 后 isPlaying("ambience") === false');
+      safeCall('stopAmbience 再重复', function () { A.stopAmbience(); });
+
+      safeCall('breaker_loop_start 重复', function () { A.play('breaker_loop_start'); A.play('breaker_loop_start'); });
+      safeCall('breaker_loop_stop 重复', function () { A.play('breaker_loop_stop'); A.play('breaker_loop_stop'); });
+
+      safeCall('init() 再次调用（幂等）', function () { A.init(); });
+      safeCall('resume() 再次调用', function () { A.resume(); });
+
+      // 非 playing 状态的 update 不应抛错
+      safeCall('title/paused/dead 状态 update', function () {
+        var gs = ['title', 'playing', 'paused', 'dead', 'won', 'unknown-state'];
+        for (var i = 0; i < 60; i++) {
+          A.update(1 / 60, makeState({
+            gameState: gs[i % gs.length],
+            breath: i / 60, power: i / 60, danger: i / 60, heartbeat: i / 60
+          }));
+        }
+      });
+
+      check(exceptions.length === 0, '鲁棒性调用全部无异常（共 ' + stats.robustCalls + ' 次调用）');
+
+      var dbg = A._debug || {};
+      stats.dropped = dbg.dropped || 0;
+      if (A.ready) {
+        check(dbg.errors === 0, '引擎内部无错误（errors=' + dbg.errors +
+          (dbg.lastError ? ', lastError=' + ((dbg.lastError && dbg.lastError.message) || dbg.lastError) : '') + '）');
+      }
+      check(((dbg.voices) || 0) <= 40, '活动声源计数合法（' + ((dbg.voices) || 0) + '/40）');
+    }
+
+    /* ---------------- 阶段 6：无 AudioContext 的 no-op 沙箱（可选） ---------------- */
+    function phaseNoopSandbox(done) {
+      log('');
+      log('== 8. 无 AudioContext / 音频不可用时的安全 no-op（隔离沙箱）==');
+      var ifr = null;
+      try {
+        ifr = document.createElement('iframe');
+        ifr.setAttribute('aria-hidden', 'true');
+        ifr.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;';
+        document.body.appendChild(ifr);
+
+        var baseHref = location.href.replace(/[^\/]*$/, '');
+        var html = '<!doctype html><html><head><base href="' + baseHref + '">' +
+          '<scr' + 'ipt>try{delete window.AudioContext;}catch(e1){}try{delete window.webkitAudioContext;}catch(e2){}<' + '/scr' + 'ipt>' +
+          '<scr' + 'ipt src="../js/audio.js"><' + '/scr' + 'ipt></head><body></body></html>';
+
+        var d = ifr.contentWindow.document;
+        d.open();
+        d.write(html);
+        d.close();
+
+        setTimeout(function () {
+          try {
+            var A2 = ifr.contentWindow.AudioEngine;
+            if (!A2) {
+              log('  ~ 沙箱脚本未加载，本项跳过（环境限制）');
+            } else if (A2._debug && A2._debug.supported) {
+              log('  ~ 沙箱内 AudioContext 无法删除，本项仅做无异常检查');
+              try {
+                A2.init(); A2.update(1 / 60, {}); A2.play('monster_screech');
+                A2.startAmbience(); A2.stopAmbience(); A2.isPlaying('x');
+                log('  ✓ 无异常');
+              } catch (e) {
+                noopHardFail = '沙箱调用异常: ' + ((e && e.message) ? e.message : String(e));
+              }
+            } else {
+              var threw = false;
+              try {
+                A2.init();
+                A2.init();
+                A2.resume();
+                A2.setMasterVolume(0.5);
+                A2.setListener(1, 2);
+                for (var i = 0; i < 10; i++) A2.update(1 / 60, { gameState: 'playing', danger: 1 });
+                A2.play('monster_screech');
+                A2.play('death', { x: 1, y: 2 });
+                A2.play('breaker_loop_start');
+                A2.play('breaker_loop_stop');
+                A2.startAmbience();
+                A2.stopAmbience();
+                if (A2.isPlaying('monster_click') !== false) throw new Error('isPlaying 在无音频环境未返回 false');
+                if (A2.ready !== false) throw new Error('无音频环境 ready 未保持 false');
+                if (A2.init() !== undefined) { /* 返回值无要求 */ }
+              } catch (e) {
+                threw = true;
+                noopHardFail = '无 AudioContext 时调用抛出异常: ' + ((e && e.message) ? e.message : String(e));
+              }
+              if (!threw) log('  ✓ 无 AudioContext 时：所有调用安全 no-op、ready=false、isPlaying=false');
+            }
+          } catch (e) {
+            log('  ~ 沙箱检查跳过（' + ((e && e.message) ? e.message : String(e)) + '）');
+          }
+          try { if (ifr.parentNode) ifr.parentNode.removeChild(ifr); } catch (e) { /* ignore */ }
+          done();
+        }, 250);
+      } catch (e) {
+        try { if (ifr && ifr.parentNode) ifr.parentNode.removeChild(ifr); } catch (e2) { /* ignore */ }
+        log('  ~ 无法创建沙箱，本项跳过（' + ((e && e.message) ? e.message : String(e)) + '）');
+        done();
+      }
+    }
+
+    /* ---------------- 结果判定 ---------------- */
+    function finalize() {
+      log('');
+      log('== 9. 判定 ==');
+      var supported = !!(A && A._debug && A._debug.supported === true);
+      var ready = !!(A && A.ready);
+
+      check(!noopHardFail, '无音频 no-op 路径' + (noopHardFail ? '（' + noopHardFail + '）' : '通过'));
+      check(exceptions.length === 0, '全程无未捕获异常');
+
+      if (failures.length > 0) {
+        render('fail', failures[0]);
+        return;
+      }
+      if (exceptions.length > 0) {
+        render('fail', exceptions[0]);
+        return;
+      }
+      if (!supported) {
+        log('  ! 本运行环境没有 AudioContext：已完成契约检查 + 300 帧 update + 23 事件的安全 no-op 验证');
+        render('ok', null);
+        return;
+      }
+      if (!ready) {
+        var le = (A._debug && A._debug.lastError);
+        render('fail', 'AudioContext 可用但引擎 init 后 ready=false' +
+          (le ? '：' + ((le && le.message) || le) : ''));
+        return;
+      }
+      var dbg = A._debug || {};
+      if (dbg.errors !== 0) {
+        render('fail', '引擎内部记录到错误：' + ((dbg.lastError && (dbg.lastError.message || dbg.lastError)) || dbg.errors));
+        return;
+      }
+      render('ok', null);
+    }
+
+    /* ---------------- 调度 ---------------- */
+    function boot() {
+      try {
+        phaseContract();
+        phasePreInit();
+      } catch (e) {
+        failNow(e);
+        return;
+      }
+      phaseInit(function () {
+        try {
+          phaseFrames();
+          phasePlayAll();
+          phaseRobustness();
+        } catch (e) {
+          failNow(e);
+          return;
+        }
+        setTimeout(function () {
+          phaseNoopSandbox(function () {
+            try {
+              finalize();
+            } catch (e) {
+              failNow(e);
+            }
+          });
+        }, 40);
+      });
+    }
+
+    // 放到下一个任务，确保 <pre> 已在 DOM 中且脚本资源就绪
+    setTimeout(boot, 0);
+  })();
+  </script>
+</body>
+</html>

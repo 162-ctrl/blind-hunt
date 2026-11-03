@@ -1,0 +1,9 @@
+﻿# 构建产物（由 tools/build-dist.mjs 生成，不入库）
+dist/
+# 无头测试截图与日志
+tests/shots/
+*.log
+# 系统与依赖
+node_modules/
+.DS_Store
+Thumbs.db

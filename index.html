@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>盲猎 · Blind Hunt</title>
+  <meta name="description" content="盲猎 —— 一场关于声音的追杀。它没有眼睛，它不需要。">
+  <!-- 早期错误捕获：必须在其它脚本之前，供无头浏览器验收 -->
+  <script>
+    window.__BH_ERRORS = [];
+    window.addEventListener('error', function (e) {
+      window.__BH_ERRORS.push('ERROR: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || 0));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      window.__BH_ERRORS.push('REJECTION: ' + (r && (r.stack || r.message) ? (r.stack || r.message) : String(r)));
+    });
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" class="hidden">
+    <div id="objective">
+      <div class="obj-label">当前目标</div>
+      <div class="obj-text" id="obj-text">恢复电力 0 / 3</div>
+      <div class="breaker-icons" id="breaker-icons">
+        <i data-id="B1"></i><i data-id="B2"></i><i data-id="B3"></i>
+      </div>
+    </div>
+
+    <div id="status-right">
+      <div class="bar-wrap">
+        <span class="bar-label">电池</span>
+        <div class="bar battery"><div id="battery-fill" class="fill"></div></div>
+      </div>
+      <div class="stones"><span id="stone-count">3</span><span class="dim">石块</span></div>
+    </div>
+
+    <div id="status-left">
+      <div class="bar-wrap">
+        <span class="bar-label">体力</span>
+        <div class="bar stamina"><div id="stamina-fill" class="fill"></div></div>
+      </div>
+      <div id="noise-meter" class="noise-meter">
+        <span class="noise-label">声响</span>
+        <div class="noise-bars"><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
+    <div id="breath-wrap" class="hidden">
+      <div class="breath-head"><span id="breath-label">屏息</span><span class="breath-key">［按住空格］</span></div>
+      <div class="bar breath"><div id="breath-fill" class="fill"></div></div>
+      <div id="breath-hint" class="breath-hint">松开空格会呼吸出声</div>
+    </div>
+
+    <div id="prompt" class="hidden"></div>
+
+    <div id="progress-wrap" class="hidden">
+      <div class="progress-label" id="progress-label">合闸中…</div>
+      <div class="bar progress"><div id="progress-fill" class="fill"></div></div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div id="danger-vignette"></div>
+    <div id="damage-flash"></div>
+
+    <div id="hint">
+      <span>WASD</span> 移动 · <span>鼠标</span> 转向 · <span>F</span> 手电 · <span>Shift</span> 冲刺 · <span>Ctrl</span> 潜行 · <span>左键</span> 投石 · <span>R</span> 倾听 · <span>空格</span> 交互/躲藏/屏息 · <span>Esc</span> 暂停
+    </div>
+  </div>
+
+  <!-- ================= 标题 ================= -->
+  <div id="screen-title" class="screen">
+    <div class="title-inner">
+      <div class="title-kicker">静默疗养院 · 停电第三夜</div>
+      <h1 class="game-title"><span class="t1">盲</span><span class="t2">猎</span></h1>
+      <p class="subtitle">它没有眼睛。<br>它不需要。</p>
+      <p class="warning">◈ 建议全程佩戴耳机，并关掉房间的灯 ◈</p>
+      <button id="btn-start" class="btn-primary">进 入 疗 养 院</button>
+      <div class="controls">
+        <div class="ctrl-row"><span class="key">WASD</span><span>移动</span><span class="key">鼠标</span><span>手电朝向</span></div>
+        <div class="ctrl-row"><span class="key">Shift</span><span>冲刺（很响）</span><span class="key">Ctrl</span><span>潜行（无声）</span></div>
+        <div class="ctrl-row"><span class="key">F</span><span>手电开关</span><span class="key">左键</span><span>投掷石块</span></div>
+        <div class="ctrl-row"><span class="key">空格</span><span>交互 / 躲藏</span><span class="key">R</span><span>倾听 · 声呐显形（慢行）</span></div>
+        <div class="ctrl-row"><span class="key">Esc</span><span>暂停</span><span class="key">M</span><span>静音</span></div>
+      </div>
+      <div class="tagline">声音是唯一的视野，也是唯一的死因。</div>
+    </div>
+  </div>
+
+  <!-- ================= 暂停 ================= -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="panel">
+      <div class="panel-kicker">PAUSED</div>
+      <h2 class="panel-title">暂停</h2>
+      <div class="panel-btns">
+        <button id="btn-resume" class="btn">继续</button>
+        <button id="btn-restart-pause" class="btn">重新开始</button>
+        <button id="btn-quit" class="btn">返回标题</button>
+      </div>
+      <p class="panel-hint">按 Esc 继续</p>
+    </div>
+  </div>
+
+  <!-- ================= 死亡 ================= -->
+  <div id="screen-dead" class="screen hidden">
+    <div class="panel dead-panel">
+      <div class="panel-kicker red">YOU WERE HEARD</div>
+      <h2 class="panel-title">你被听见了。</h2>
+      <p class="dead-reason" id="dead-reason">它听见了：你的脚步。</p>
+      <p class="dead-sub" id="dead-sub"></p>
+      <div class="dead-stats">
+        <div><span class="dim">存活</span><span id="dead-time">--</span></div>
+        <div><span class="dim">电闸</span><span id="dead-power">0 / 3</span></div>
+        <div><span class="dim">死亡</span><span id="dead-count">1</span></div>
+      </div>
+      <p class="dead-tip" id="dead-tip"></p>
+      <div class="panel-btns">
+        <button id="btn-retry" class="btn-primary">再试一次　[ R ]</button>
+        <button id="btn-quit-dead" class="btn">返回标题</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 胜利 ================= -->
+  <div id="screen-win" class="screen hidden">
+    <div class="panel win-panel">
+      <div class="panel-kicker">YOU ESCAPED</div>
+      <h2 class="panel-title">你逃出来了。</h2>
+      <p class="win-sub">南门在你身后合上。雨声盖过了一切。<br>但你总觉得，有什么东西记住了你的脚步。</p>
+      <div class="dead-stats">
+        <div><span class="dim">逃生用时</span><span id="win-time">--</span></div>
+        <div><span class="dim">死亡次数</span><span id="win-deaths">0</span></div>
+        <div><span class="dim">拾得笔记</span><span id="win-notes">0 / 8</span></div>
+        <div><span class="dim">剩余电池</span><span id="win-battery">--</span></div>
+      </div>
+      <div class="panel-btns">
+        <button id="btn-again" class="btn-primary">再玩一次　[ R ]</button>
+        <button id="btn-quit-win" class="btn">返回标题</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 纸条阅读 ================= -->
+  <div id="screen-note" class="screen note-screen hidden">
+    <div class="note-paper">
+      <div class="note-title" id="note-title">笔记</div>
+      <pre class="note-text" id="note-text"></pre>
+      <div class="note-close">［空格 / 点击］收起</div>
+    </div>
+  </div>
+
+  <!-- 运行时错误（供无头浏览器检查，平时不可见） -->
+  <pre id="errlog" aria-hidden="true"></pre>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/level.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

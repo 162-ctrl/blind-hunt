@@ -1,0 +1,284 @@
+{
+  "stages": [
+    {
+      "name": "boot",
+      "ok": true,
+      "ms": 663,
+      "value": {
+        "mode": "title",
+        "titleScreen": true,
+        "scripts": ",audio.js,level.js,game.js,render.js,main.js",
+        "errlog": "OK",
+        "audio": "idle",
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\00-title.png"
+      }
+    },
+    {
+      "name": "start",
+      "ok": true,
+      "ms": 1330,
+      "value": {
+        "mode": "playing",
+        "audio": "ready",
+        "hudVisible": true,
+        "titleHidden": true,
+        "player": {
+          "x": 30.5,
+          "y": 41.5,
+          "battery": 0.994,
+          "flashlightOn": true,
+          "stones": 3
+        },
+        "errlog": "OK",
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\01-start.png"
+      }
+    },
+    {
+      "name": "flashlight",
+      "ok": true,
+      "ms": 1573,
+      "value": {
+        "initial": true,
+        "afterOff": false,
+        "afterOn": true,
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\02-flashlight.png"
+      }
+    },
+    {
+      "name": "walk",
+      "ok": true,
+      "ms": 1269,
+      "value": {
+        "before": {
+          "x": 30.5,
+          "y": 41.5
+        },
+        "after": {
+          "x": 30.5,
+          "y": 40.33325,
+          "move": "idle",
+          "stamina": 1
+        },
+        "moved": 1.17
+      }
+    },
+    {
+      "name": "sonar_listen",
+      "ok": true,
+      "ms": 1237,
+      "value": {
+        "listening": {
+          "listening": true,
+          "move": "idle"
+        },
+        "phase": 1.62,
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\03-sonar.png"
+      }
+    },
+    {
+      "name": "breaker",
+      "ok": true,
+      "ms": 3924,
+      "value": {
+        "setup": {
+          "id": "B1",
+          "x": 19,
+          "y": 31,
+          "on": false,
+          "room": "锅炉房"
+        },
+        "interact": "breaker",
+        "mid": {
+          "hold": 0,
+          "kind": null,
+          "power": 1
+        },
+        "after": {
+          "power": 1,
+          "breakerOn": true,
+          "gateUnlocked": false,
+          "obj": "恢复电力 1 / 3",
+          "monster": "patrol"
+        },
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\04-breaker-done.png"
+      }
+    },
+    {
+      "name": "note",
+      "ok": true,
+      "ms": 1791,
+      "value": {
+        "interact": "note",
+        "opened": {
+          "mode": "note",
+          "title": "值班日志 · 第三夜",
+          "textLen": 62,
+          "visible": true
+        },
+        "closed": "note",
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\05-note.png"
+      }
+    },
+    {
+      "name": "pickup",
+      "ok": true,
+      "ms": 618,
+      "value": {
+        "setup": {
+          "id": "p0",
+          "type": "stone",
+          "amount": 1
+        },
+        "after": {
+          "stones": 3,
+          "battery": 0.994,
+          "taken": 1
+        }
+      }
+    },
+    {
+      "name": "throw",
+      "ok": true,
+      "ms": 1396,
+      "value": {
+        "before": {
+          "stones": 3,
+          "mode": "playing",
+          "aim": {
+            "x": 975.3741489472086,
+            "y": -857.8427351622215
+          }
+        },
+        "mid": {
+          "stones": 2,
+          "projectiles": 1
+        },
+        "after": {
+          "stones": 2,
+          "projectiles": 0,
+          "ripples": 2,
+          "monster": "patrol"
+        }
+      }
+    },
+    {
+      "name": "hide_breath",
+      "ok": true,
+      "ms": 3568,
+      "value": {
+        "spot": {
+          "x": 26,
+          "y": 31,
+          "type": "bed"
+        },
+        "interact": "hide",
+        "hidden": {
+          "hidden": true,
+          "breathWrap": true
+        },
+        "holding": {
+          "holdingBreath": true,
+          "breath": 0.583
+        },
+        "left": false,
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\06-hidden.png"
+      }
+    },
+    {
+      "name": "chase",
+      "ok": true,
+      "ms": 1102,
+      "value": {
+        "heard": {
+          "playerHeard": {
+            "source": "sprint",
+            "dist": 4.833675722204641,
+            "t": 15.04929999999993
+          },
+          "monster": "chase"
+        },
+        "state": {
+          "monster": "chase",
+          "distance": 3.75,
+          "danger": 0.9
+        },
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\07-chase.png"
+      }
+    },
+    {
+      "name": "pause_resume",
+      "ok": true,
+      "ms": 1230,
+      "value": {
+        "paused": {
+          "mode": "paused",
+          "visible": true
+        },
+        "resumed": "playing"
+      }
+    },
+    {
+      "name": "death",
+      "ok": true,
+      "ms": 1915,
+      "value": {
+        "mode": "dead",
+        "reason": "它顺着「冲刺」追上了你。",
+        "sub": "距离它 7 米时，你被听见了。",
+        "tip": "提示：声音是它唯一的感官。停下不动，它就失去了你。",
+        "time": "00:16",
+        "hudHidden": true,
+        "deadVisible": true,
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\08-death.png"
+      }
+    },
+    {
+      "name": "retry",
+      "ok": true,
+      "ms": 1150,
+      "value": {
+        "mode": "playing",
+        "power": 0,
+        "player": {
+          "x": 30.5,
+          "y": 41.5,
+          "battery": 0.99,
+          "stones": 3
+        },
+        "hudVisible": true,
+        "errlog": "OK",
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\09-retry.png"
+      }
+    },
+    {
+      "name": "win",
+      "ok": true,
+      "ms": 5196,
+      "value": {
+        "interact": "gate",
+        "mode": "won",
+        "winVisible": true,
+        "winTime": "00:04",
+        "winDeaths": "1",
+        "winNotes": "0 / 8",
+        "winBattery": "97%",
+        "hudHidden": true,
+        "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\10-win.png"
+      }
+    },
+    {
+      "name": "errors",
+      "ok": true,
+      "ms": 14,
+      "value": {
+        "errlog": "OK",
+        "jsExceptions": 0,
+        "consoleErrors": 0
+      }
+    }
+  ],
+  "jsExceptions": [],
+  "consoleErrors": [],
+  "logEntries": [],
+  "ok": true
+}
