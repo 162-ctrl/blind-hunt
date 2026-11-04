@@ -7,7 +7,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = 9467;
-const ROOT = 'file:///D:/%E4%B8%87%E6%98%8A%E6%9E%97/%E9%A1%B9%E7%9B%AE/%E6%81%90%E6%80%96%E6%B8%B8%E6%88%8F/index.html';
+const ROOT = process.env.BH_URL || 'file:///D:/%E4%B8%87%E6%98%8A%E6%9E%97/%E9%A1%B9%E7%9B%AE/%E6%81%90%E6%80%96%E6%B8%B8%E6%88%8F/index.html';
+const PROXY = process.env.BH_PROXY || '';
 const SHOTS = 'D:\\万昊林\\项目\\恐怖游戏\\tests\\shots';
 mkdirSync(SHOTS, { recursive: true });
 
@@ -68,7 +69,7 @@ async function mouseClick(page, x, y) {
 
 const edge = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-sandbox', '--autoplay-policy=no-user-gesture-required',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + process.env.TEMP + '\\bh-throw-' + Date.now(),
-  '--window-size=1600,900', 'about:blank'], { stdio: 'ignore' });
+  '--window-size=1600,900'].concat(PROXY ? ['--proxy-server=' + PROXY] : []).concat(['about:blank']), { stdio: 'ignore' });
 
 const out = { scenarios: {} };
 try {
@@ -77,7 +78,7 @@ try {
   const page = connect(t.webSocketDebuggerUrl);
   await page.send('Page.enable');
   await page.send('Runtime.enable');
-  await waitFor(() => ev(page, 'document.readyState === "complete"'), 8000);
+  await waitFor(() => ev(page, 'document.readyState === "complete" && typeof BH !== "undefined" && !!document.getElementById("btn-start")'), 20000);
   await ev(page, 'document.getElementById("btn-start").click()');
   await waitFor(() => ev(page, 'BH.S.mode === "playing"'), 5000);
   out.viewport = await ev(page, '({w: BH.view.w, h: BH.view.h, zoom: +BH.view.zoom.toFixed(3)})');
