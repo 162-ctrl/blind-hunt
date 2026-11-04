@@ -1297,7 +1297,29 @@
     var inp = BH.input;
     if (!p || !inp || !inp.mouseActive || S.mode !== 'playing' || p.hidden) return;
     ctx.save();
-    ctx.strokeStyle = 'rgba(220,230,240,0.22)';
+    var hasStone = p.stones > 0;
+    // 虚线指出石头会落在哪：没有这条线，玩家很难判断投石的作用范围
+    if (hasStone) {
+      var ps = BH.worldToScreen(p.x, p.y);
+      var dx = inp.mouse.x - ps.x, dy = inp.mouse.y - ps.y;
+      var dl = Math.hypot(dx, dy) || 1;
+      var z = (BH.view && BH.view.zoom) || 1;
+      var len = Math.min(dl, 9 * TILE * z);
+      var ex = ps.x + dx / dl * len, ey = ps.y + dy / dl * len;
+      ctx.setLineDash([3, 7]);
+      ctx.strokeStyle = 'rgba(206,220,236,0.20)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ps.x, ps.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(206,220,236,0.45)';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2.2, 0, TAU);
+      ctx.fill();
+    }
+    ctx.strokeStyle = hasStone ? 'rgba(220,230,240,0.34)' : 'rgba(220,230,240,0.14)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(inp.mouse.x, inp.mouse.y, 3.5, 0, TAU);

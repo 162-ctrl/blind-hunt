@@ -25,19 +25,12 @@
       "finalState": "patrol",
       "memoryT": 0,
       "searchT": 0,
-      "finalDist": 4.59
+      "finalDist": 2
     },
     "huntPersistence": {
-      "dead": true,
-      "deathInfo": {
-        "reason": "它从黑暗里扑了上来。",
-        "sub": "它没有眼睛，却总能知道你在哪里。",
-        "tip": "声音是它唯一的感官。停下不动，它就失去了你。",
-        "time": 38.87400000000078,
-        "power": 0,
-        "deaths": 1
-      },
-      "minDist": 0.61,
+      "dead": false,
+      "deathInfo": null,
+      "minDist": 0.65,
       "finalState": "patrol",
       "samples": [
         {
@@ -53,75 +46,85 @@
         {
           "t": 6,
           "state": "search",
-          "d": 4.1
+          "d": 3.6
         },
         {
           "t": 9,
           "state": "search",
-          "d": 2
+          "d": 1.1
         },
         {
           "t": 12,
           "state": "search",
-          "d": 3.1
+          "d": 2.3
         },
         {
           "t": 15,
           "state": "patrol",
-          "d": 6
+          "d": 1.6
         },
         {
           "t": 18,
           "state": "patrol",
-          "d": 8.2
+          "d": 4.2
         },
         {
           "t": 21,
           "state": "patrol",
-          "d": 6.3
+          "d": 2.1
         },
         {
           "t": 24,
           "state": "patrol",
-          "d": 2.4
+          "d": 1.4
         },
         {
           "t": 27,
           "state": "patrol",
-          "d": 3
+          "d": 1
         },
         {
           "t": 30,
           "state": "patrol",
-          "d": 4.9
+          "d": 4.8
         },
         {
           "t": 33,
           "state": "patrol",
-          "d": 6.8
+          "d": 2
         },
         {
           "t": 36,
           "state": "patrol",
-          "d": 3.7
+          "d": 0.7
         },
         {
           "t": 39,
           "state": "patrol",
-          "d": 0.9
+          "d": 2.2
+        },
+        {
+          "t": 42,
+          "state": "patrol",
+          "d": 6
+        },
+        {
+          "t": 45,
+          "state": "patrol",
+          "d": 7.3
         }
       ]
     },
     "decoyDistractRate": {
       "recentNoise": {
         "trials": 60,
-        "distracted": 9,
-        "rate": 0.15
+        "distracted": 16,
+        "rate": 0.27
       },
       "staleNoise": {
         "trials": 60,
-        "distracted": 18,
-        "rate": 0.3
+        "distracted": 24,
+        "rate": 0.4
       }
     },
     "listenPause": {
@@ -132,7 +135,7 @@
           "state": "search"
         },
         {
-          "t": 8.84,
+          "t": 7.52,
           "state": "search"
         }
       ]

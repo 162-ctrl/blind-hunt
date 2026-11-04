@@ -95,7 +95,7 @@
       pantRadius: 3.6,
       breathRadius: 1.5,
       gaspRadius: 5.2,
-      throwRadius: 8.4,
+      throwRadius: 11.0,
       breakerHoldRadius: 9.0,
       breakerDoneRadius: 15.0,
       gateHoldRadius: 9.5
@@ -452,6 +452,7 @@
     S.tipIndex = 0;
     S.huntTipPlayed = false;
     S.decoyTipPlayed = false;
+    S.decoyLureTipPlayed = false;
 
     env.lightning.next = randRange(20, 34);
     env.lightning.flash = 0;
@@ -501,7 +502,9 @@
     var m = monster;
     var d = dist(m.x, m.y, x, y);
     var los = hasLOS(m.x, m.y, x, y);
-    var eff = radius * (los ? 1.0 : 0.58);
+    // 石头是硬物落地的「嗒」声，比脚步更容易穿墙；衰减得别太狠，否则玩家会觉得扔了没用
+    var occl = source === 'decoy' ? 0.85 : 0.58;
+    var eff = radius * (los ? 1.0 : occl);
     if (d > eff) return;
     if (PLAYER_NOISE[source]) {
       player.lastHeard = { source: source, dist: d, t: S.runTime };
@@ -535,7 +538,7 @@
     if (isDecoy) {
       var recentlyHeardPlayer = !!(player.lastHeard && S.runTime - player.lastHeard.t < 1.6);
       var chance = 1;
-      if (m.state === 'chase') chance = recentlyHeardPlayer ? 0.15 : 0.30;
+      if (m.state === 'chase') chance = recentlyHeardPlayer ? 0.25 : 0.45;
       if (rnd() < chance) {
         m.lastHeard = { x: x, y: y };
         m.lastKnown = { x: x, y: y };
@@ -550,12 +553,21 @@
         if (m.state === 'chase') {
           m.searchT = Math.max(m.searchT, searchDuration() * 0.7);
           setMonsterState('investigate');
+          audio.sfx('monster_click', m.x, m.y);
+          spawnRipple(m.x, m.y, 2.6, 'monster', 1.6);
           logEvent('decoy-distract', { d: +d.toFixed(1) });
         } else {
           if (m.state !== 'investigate') setMonsterState('investigate');
+          audio.sfx('monster_click', m.x, m.y);
+          spawnRipple(m.x, m.y, 2.6, 'monster', 1.6);
+          if (!S.decoyLureTipPlayed) {
+            S.decoyLureTipPlayed = true;
+            toast('它听见了。', '石头落地的声音，把它引了过去。');
+          }
           logEvent('decoy-heard', { d: +d.toFixed(1) });
         }
       } else {
+        audio.sfx('monster_click', m.x, m.y);
         logEvent('decoy-ignored', { d: +d.toFixed(1) });
         if (!S.decoyTipPlayed) {
           S.decoyTipPlayed = true;

@@ -3,7 +3,7 @@
     {
       "name": "boot",
       "ok": true,
-      "ms": 534,
+      "ms": 609,
       "value": {
         "mode": "title",
         "titleScreen": true,
@@ -16,7 +16,7 @@
     {
       "name": "start",
       "ok": true,
-      "ms": 1300,
+      "ms": 1217,
       "value": {
         "mode": "playing",
         "audio": "ready",
@@ -36,7 +36,7 @@
     {
       "name": "flashlight",
       "ok": true,
-      "ms": 1178,
+      "ms": 1231,
       "value": {
         "initial": true,
         "afterOff": false,
@@ -47,7 +47,7 @@
     {
       "name": "walk",
       "ok": true,
-      "ms": 1230,
+      "ms": 1239,
       "value": {
         "before": {
           "x": 30.5,
@@ -65,7 +65,7 @@
     {
       "name": "sonar_listen",
       "ok": true,
-      "ms": 1136,
+      "ms": 1166,
       "value": {
         "listening": {
           "listening": true,
@@ -78,7 +78,7 @@
     {
       "name": "breaker",
       "ok": true,
-      "ms": 3822,
+      "ms": 3856,
       "value": {
         "setup": {
           "id": "B1",
@@ -106,7 +106,7 @@
     {
       "name": "note",
       "ok": true,
-      "ms": 1759,
+      "ms": 1781,
       "value": {
         "interact": "note",
         "opened": {
@@ -122,7 +122,7 @@
     {
       "name": "pickup",
       "ok": true,
-      "ms": 617,
+      "ms": 633,
       "value": {
         "setup": {
           "id": "p0",
@@ -139,13 +139,13 @@
     {
       "name": "throw",
       "ok": true,
-      "ms": 1384,
+      "ms": 1404,
       "value": {
         "before": {
           "stones": 3,
           "mode": "playing",
           "aim": {
-            "x": 975.3622061479382,
+            "x": 975.3622061479399,
             "y": -857.8569172363518
           }
         },
@@ -156,7 +156,7 @@
         "after": {
           "stones": 2,
           "projectiles": 0,
-          "ripples": 4,
+          "ripples": 3,
           "monster": "patrol"
         }
       }
@@ -164,7 +164,7 @@
     {
       "name": "hide_breath",
       "ok": true,
-      "ms": 3551,
+      "ms": 3678,
       "value": {
         "spot": {
           "x": 26,
@@ -187,20 +187,20 @@
     {
       "name": "chase",
       "ok": true,
-      "ms": 1078,
+      "ms": 1112,
       "value": {
         "heard": {
           "playerHeard": {
             "source": "sprint",
-            "dist": 4.815061199984972,
-            "t": 14.232599999999946
+            "dist": 4.5,
+            "t": 14.51609999999996
           },
           "monster": "chase"
         },
         "state": {
           "monster": "chase",
-          "distance": 3.51,
-          "danger": 0.91
+          "distance": 3.23,
+          "danger": 0.93
         },
         "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\07-chase.png"
       }
@@ -208,7 +208,7 @@
     {
       "name": "pause_resume",
       "ok": true,
-      "ms": 1206,
+      "ms": 1240,
       "value": {
         "paused": {
           "mode": "paused",
@@ -220,13 +220,13 @@
     {
       "name": "death",
       "ok": true,
-      "ms": 1863,
+      "ms": 1919,
       "value": {
         "mode": "dead",
         "reason": "它顺着「冲刺」追上了你。",
         "sub": "距离它 7 米时，你被听见了。",
         "tip": "提示：声音是它唯一的感官。停下不动，它就失去了你。",
-        "time": "00:15",
+        "time": "00:16",
         "hudHidden": true,
         "deadVisible": true,
         "screenshot": "D:\\万昊林\\项目\\恐怖游戏\\tests\\shots\\08-death.png"
@@ -235,7 +235,7 @@
     {
       "name": "retry",
       "ok": true,
-      "ms": 1158,
+      "ms": 1148,
       "value": {
         "mode": "playing",
         "power": 0,
@@ -253,7 +253,7 @@
     {
       "name": "win",
       "ok": true,
-      "ms": 5165,
+      "ms": 5055,
       "value": {
         "interact": "gate",
         "mode": "won",
@@ -269,7 +269,7 @@
     {
       "name": "errors",
       "ok": true,
-      "ms": 15,
+      "ms": 8,
       "value": {
         "errlog": "OK",
         "jsExceptions": 0,
