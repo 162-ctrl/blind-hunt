@@ -1,0 +1,174 @@
+{
+  "scenarios": {
+    "searchEscalation": {
+      "afterState": "chase",
+      "dist": 2.8
+    },
+    "investigateEscalation": {
+      "afterState": "chase",
+      "dist": 2.8
+    },
+    "chaseLossTimeline": {
+      "chaseStarted": "chase",
+      "timeline": [
+        {
+          "t": 1.35,
+          "from": "chase",
+          "to": "search"
+        },
+        {
+          "t": 12.37,
+          "from": "search",
+          "to": "patrol"
+        }
+      ],
+      "finalState": "patrol",
+      "memoryT": 0,
+      "searchT": 0,
+      "finalDist": 4.59
+    },
+    "huntPersistence": {
+      "dead": true,
+      "deathInfo": {
+        "reason": "它从黑暗里扑了上来。",
+        "sub": "它没有眼睛，却总能知道你在哪里。",
+        "tip": "声音是它唯一的感官。停下不动，它就失去了你。",
+        "time": 38.87400000000078,
+        "power": 0,
+        "deaths": 1
+      },
+      "minDist": 0.61,
+      "finalState": "patrol",
+      "samples": [
+        {
+          "t": 0,
+          "state": "chase",
+          "d": 7.9
+        },
+        {
+          "t": 3,
+          "state": "search",
+          "d": 1.7
+        },
+        {
+          "t": 6,
+          "state": "search",
+          "d": 4.1
+        },
+        {
+          "t": 9,
+          "state": "search",
+          "d": 2
+        },
+        {
+          "t": 12,
+          "state": "search",
+          "d": 3.1
+        },
+        {
+          "t": 15,
+          "state": "patrol",
+          "d": 6
+        },
+        {
+          "t": 18,
+          "state": "patrol",
+          "d": 8.2
+        },
+        {
+          "t": 21,
+          "state": "patrol",
+          "d": 6.3
+        },
+        {
+          "t": 24,
+          "state": "patrol",
+          "d": 2.4
+        },
+        {
+          "t": 27,
+          "state": "patrol",
+          "d": 3
+        },
+        {
+          "t": 30,
+          "state": "patrol",
+          "d": 4.9
+        },
+        {
+          "t": 33,
+          "state": "patrol",
+          "d": 6.8
+        },
+        {
+          "t": 36,
+          "state": "patrol",
+          "d": 3.7
+        },
+        {
+          "t": 39,
+          "state": "patrol",
+          "d": 0.9
+        }
+      ]
+    },
+    "decoyDistractRate": {
+      "recentNoise": {
+        "trials": 60,
+        "distracted": 9,
+        "rate": 0.15
+      },
+      "staleNoise": {
+        "trials": 60,
+        "distracted": 18,
+        "rate": 0.3
+      }
+    },
+    "listenPause": {
+      "pauseCount": 2,
+      "pauses": [
+        {
+          "t": 0.63,
+          "state": "search"
+        },
+        {
+          "t": 8.84,
+          "state": "search"
+        }
+      ]
+    },
+    "hideSpotCheck": {
+      "breathe": {
+        "dead": true,
+        "deathInfo": {
+          "reason": "它掀开了你藏身的床底。",
+          "sub": "屏住呼吸的时机，比躲藏的地点更重要。",
+          "tip": "声音是它唯一的感官。停下不动，它就失去了你。",
+          "time": 5.082000000000005,
+          "power": 0,
+          "deaths": 1
+        },
+        "timeline": [
+          {
+            "t": 5.08,
+            "dead": true
+          }
+        ]
+      },
+      "holdBreath": {
+        "dead": false,
+        "deathInfo": null,
+        "timeline": []
+      }
+    },
+    "speeds": {
+      "playerWalk": 2.5,
+      "playerSprint": 4.35,
+      "monsterChase0": 3,
+      "monsterChase3": 3.18,
+      "staminaSprintSeconds": 3.33
+    }
+  },
+  "notes": [],
+  "errlog": "OK"
+}

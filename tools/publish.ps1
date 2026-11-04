@@ -29,13 +29,24 @@ try {
     $ie = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction Stop
     if ($ie.ProxyEnable -eq 1 -and $ie.ProxyServer) { $proxy = 'http://' + $ie.ProxyServer }
 } catch { }
+if (-not $proxy) {
+    # 系统代理开关被关掉、但代理软件仍在监听时，也直接用它
+    $probe = Test-NetConnection -ComputerName 127.0.0.1 -Port 7897 -InformationLevel Quiet -WarningAction SilentlyContinue
+    if ($probe) { $proxy = 'http://127.0.0.1:7897'; Ok '系统代理未开启，但检测到 127.0.0.1:7897 在监听，使用它' }
+}
 if ($proxy) {
     $env:HTTP_PROXY = $proxy
     $env:HTTPS_PROXY = $proxy
-    Ok "使用系统代理 $proxy"
+    Ok "使用代理 $proxy"
 } else {
-    Warn '没检测到系统代理。GitHub 可能连不上（默认代理端口 127.0.0.1:7897）'
+    Warn '没检测到系统代理。git push 可能连不上，会自动改用 GitHub API 备用通道'
 }
+
+# 解析 node（打包与 API 备用通道都要用）
+$node = $null
+$cmd = Get-Command node -ErrorAction SilentlyContinue
+if ($cmd) { $node = $cmd.Source }
+elseif (Test-Path 'D:\node.exe') { $node = 'D:\node.exe' }
 
 # ---------- 2. 检查仓库 ----------
 Step '检查仓库'
@@ -47,10 +58,6 @@ Ok "远端 $remote"
 # ---------- 3. 重新打包单文件版（方便离线分享） ----------
 if (-not $SkipDist) {
     Step '打包单文件版（dist\盲猎.html）'
-    $node = $null
-    $cmd = Get-Command node -ErrorAction SilentlyContinue
-    if ($cmd) { $node = $cmd.Source }
-    elseif (Test-Path 'D:\node.exe') { $node = 'D:\node.exe' }
     if ($node) {
         & $node (Join-Path $repoRoot 'tools\build-dist.mjs') | Out-Null
         if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $repoRoot 'dist\盲猎.html'))) {
@@ -84,21 +91,35 @@ if ($staged.Count -gt 0) {
 
 # ---------- 5. 推送 ----------
 Step '推送到 GitHub'
+$pushed = $false
 $pushOut = @(git push origin main 2>&1)
 $pushText = ($pushOut -join "`n")
-if ($LASTEXITCODE -ne 0) {
-    Write-Host $pushText -ForegroundColor DarkGray
-    Fail '上传失败。常见原因与解决：'
-    Write-Host '   1) 代理没开 / 端口变了：确认 127.0.0.1:7897 在运行，或改本脚本第 1 步的端口' -ForegroundColor Yellow
-    Write-Host '   2) GitHub 登录过期：运行下面的命令重新授权，再双击本脚本' -ForegroundColor Yellow
-    Write-Host '      & "C:\Program Files\GitHub CLI\gh.exe" auth login --hostname github.com --git-protocol https --web' -ForegroundColor Gray
-    Write-Host '   3) 网络抖动：过一会儿再双击一次' -ForegroundColor Yellow
-    exit 1
-}
-if ($pushText -match 'Everything up-to-date') {
-    Ok '已是最新，GitHub 上就是当前版本'
+if ($LASTEXITCODE -eq 0) {
+    if ($pushText -match 'Everything up-to-date') {
+        Ok '已是最新，GitHub 上就是当前版本'
+    } else {
+        Ok '已推送'
+    }
+    $pushed = $true
 } else {
-    Ok '已推送'
+    Write-Host $pushText -ForegroundColor DarkGray
+    Warn 'git push 连不上 github.com（常见于代理没开），尝试 API 备用通道…'
+    if ($node -and (Test-Path (Join-Path $repoRoot 'tools\push-api.mjs'))) {
+        & $node (Join-Path $repoRoot 'tools\push-api.mjs') $Message
+        if ($LASTEXITCODE -eq 0) {
+            Ok '已通过 GitHub API 上传（内容与 git push 等价，Pages 会自动重建）'
+            Write-Host '      （本地 git 历史与远端会略有分叉，内容一致；以后继续用本脚本上传即可）' -ForegroundColor DarkGray
+            $pushed = $true
+        }
+    }
+    if (-not $pushed) {
+        Fail '上传失败。常见原因与解决：'
+        Write-Host '   1) 代理没开 / 端口变了：先启动代理软件（通常 127.0.0.1:7897），再双击本脚本' -ForegroundColor Yellow
+        Write-Host '   2) GitHub 登录过期：运行下面的命令重新授权，再双击本脚本' -ForegroundColor Yellow
+        Write-Host '      & "C:\Program Files\GitHub CLI\gh.exe" auth login --hostname github.com --git-protocol https --web' -ForegroundColor Gray
+        Write-Host '   3) 网络抖动：过一会儿再双击一次' -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 # ---------- 6. 结果 ----------

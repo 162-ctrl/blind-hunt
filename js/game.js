@@ -63,22 +63,29 @@
       maxStones: 5
     },
     monster: {
-      patrolSpeed: 1.32,
-      investigateSpeed: 1.95,
-      chaseSpeed: 2.72,
-      searchSpeed: 1.65,
-      speedPerBreaker: 0.05,
-      chaseRange: 6.2,
-      giveUpTime: 3.6,
-      searchTime: 8.0,
-      searchTimePerBreaker: 1.4,
-      clickPatrol: 3.1,
-      clickInvestigate: 1.5,
-      clickSearch: 2.3,
-      clickChase: 0.95,
+      patrolSpeed: 1.38,
+      investigateSpeed: 2.05,
+      chaseSpeed: 3.00,
+      searchSpeed: 1.70,
+      speedPerBreaker: 0.06,
+      chaseRange: 6.6,
+      giveUpTime: 4.2,
+      searchTime: 11.0,
+      searchTimePerBreaker: 2.0,
+      huntMemory: 20.0,
+      chaseLead: 0.30,
+      chaseLeadMax: 2.6,
+      listenInterval: 7.0,
+      listenTime: 1.35,
+      clickPatrol: 2.8,
+      clickInvestigate: 1.4,
+      clickSearch: 1.9,
+      clickChase: 0.85,
       killDist: 0.74,
       spotCheckDist: 1.55,
       spotCheckTime: 1.05,
+      spotSearchRadius: 8.5,
+      spotHeardRadius: 8.0,
       contactDist: 0.62
     },
     noise: {
@@ -383,10 +390,18 @@
       searchT: 0,
       chaseLostT: 0,
       lastHeard: { x: level.monsterSpawn.x + 0.5, y: level.monsterSpawn.y + 0.5 },
+      lastKnown: null,
+      memoryT: 0,
+      heardPrev: null,
+      heardVel: { x: 0, y: 0 },
+      listenT: randRange(3.0, 6.0),
+      pauseT: 0,
       spotTarget: null,
       checkT: 0,
       searchPoint: null,
       lastNode: null,
+      lastMoveCheck: { x: level.monsterSpawn.x + 0.5, y: level.monsterSpawn.y + 0.5 },
+      moveCheckT: 0,
       aggression: 0,
       animT: 0,
       lastState: 'patrol'
@@ -431,9 +446,12 @@
     S.tips = [
       { t: 1.6, msg: '它靠声音狩猎。', sub: '你发出的每一点声响，它都听得见。' },
       { t: 10.0, msg: '按住 Shift 冲刺会发出巨大声响。', sub: '按 Ctrl 潜行几乎无声，但很慢。' },
-      { t: 20.0, msg: '左键投掷石块，可以制造假声源。', sub: '让它去听石头，而不是你。' }
+      { t: 20.0, msg: '左键投掷石块，可以制造假声源。', sub: '让它去听石头，而不是你。' },
+      { t: 38.0, msg: '如果它开始搜索，别急着跑。', sub: '它循着最后一次听见的位置找。安静，它才会走开。' }
     ];
     S.tipIndex = 0;
+    S.huntTipPlayed = false;
+    S.decoyTipPlayed = false;
 
     env.lightning.next = randRange(20, 34);
     env.lightning.flash = 0;
@@ -491,45 +509,84 @@
     onMonsterHeard(x, y, source, d, eff);
   }
 
+  // 声音到达怪物。规则：
+  //  - 石头（诱饵）：任何状态下它都会去查看；但如果它刚刚听见的是你本人，
+  //    石头只有一定概率把它带偏——越是在追你，越不会上当。
+  //  - 真人的声音：只要在 chaseRange 内，不管它在巡逻、调查还是搜索，都会立刻扑过来。
   function onMonsterHeard(x, y, source, d, eff) {
     var m = monster;
-    if (m.state === 'chase') {
-      if (source === 'decoy') {
-        // 石块有几率把它短暂引开
-        if (rnd() < 0.42) {
-          m.lastHeard = { x: x, y: y };
-          m.target = { x: x, y: y };
-          m.chaseLostT = 0;
-          m.repathT = 0;
+    var isDecoy = source === 'decoy';
+
+    // 记录你真实的移动方向（追逐时用它预判你会拐向哪边）；石头不算
+    if (!isDecoy) {
+      if (m.heardPrev && S.runTime - m.heardPrev.t > 0.04) {
+        var dtH = S.runTime - m.heardPrev.t;
+        var vx = (x - m.heardPrev.x) / dtH;
+        var vy = (y - m.heardPrev.y) / dtH;
+        var sp = Math.hypot(vx, vy);
+        var maxSp = CFG.player.walkSpeed * CFG.player.sprintMul + 0.6;
+        if (sp > maxSp) { vx = vx / sp * maxSp; vy = vy / sp * maxSp; }
+        m.heardVel.x = m.heardVel.x * 0.35 + vx * 0.65;
+        m.heardVel.y = m.heardVel.y * 0.35 + vy * 0.65;
+      }
+      m.heardPrev = { x: x, y: y, t: S.runTime };
+    }
+
+    if (isDecoy) {
+      var recentlyHeardPlayer = !!(player.lastHeard && S.runTime - player.lastHeard.t < 1.6);
+      var chance = 1;
+      if (m.state === 'chase') chance = recentlyHeardPlayer ? 0.15 : 0.30;
+      if (rnd() < chance) {
+        m.lastHeard = { x: x, y: y };
+        m.lastKnown = { x: x, y: y };
+        m.target = { x: x, y: y };
+        m.chaseLostT = 0;
+        m.repathT = 0;
+        m.path = null;
+        m.spotTarget = null;
+        m.searchPoint = null;
+        m.checkT = 0;
+        m.pauseT = 0;
+        if (m.state === 'chase') {
+          m.searchT = Math.max(m.searchT, searchDuration() * 0.7);
+          setMonsterState('investigate');
           logEvent('decoy-distract', { d: +d.toFixed(1) });
-          return;
+        } else {
+          if (m.state !== 'investigate') setMonsterState('investigate');
+          logEvent('decoy-heard', { d: +d.toFixed(1) });
+        }
+      } else {
+        logEvent('decoy-ignored', { d: +d.toFixed(1) });
+        if (!S.decoyTipPlayed) {
+          S.decoyTipPlayed = true;
+          toast('它没有上当。', '刚听过你声音的耳朵，不会被一块石头骗走。');
         }
       }
-      m.lastHeard = { x: x, y: y };
-      m.target = { x: x, y: y };
+      return;
+    }
+
+    m.lastHeard = { x: x, y: y };
+    m.lastKnown = { x: x, y: y };
+    m.target = { x: x, y: y };
+
+    if (m.state === 'chase') {
       m.chaseLostT = 0;
       m.repathT = 0;
       return;
     }
-    if (source === 'decoy') {
-      m.lastHeard = { x: x, y: y };
-      m.target = { x: x, y: y };
-      if (m.state !== 'investigate') setMonsterState('investigate');
-      m.repathT = 0;
-      logEvent('decoy-heard', { d: +d.toFixed(1) });
-      return;
-    }
-    if (d < CFG.monster.chaseRange && m.state !== 'search') {
+
+    // 近处或足够响的声音 → 直接扑过来（搜索中也不放过）
+    if (d < CFG.monster.chaseRange) {
       startChase(x, y);
       return;
     }
-    m.lastHeard = { x: x, y: y };
-    m.target = { x: x, y: y };
+
     if (m.state !== 'investigate') {
       setMonsterState('investigate');
-    } else {
-      m.repathT = 0;
+      m.pauseT = 0;
+      m.path = null;
     }
+    m.repathT = 0;
     logEvent('heard', { src: source, d: +d.toFixed(1) });
   }
 
@@ -537,9 +594,15 @@
     var m = monster;
     var wasChase = m.state === 'chase';
     m.lastHeard = { x: x, y: y };
+    m.lastKnown = { x: x, y: y };
     m.target = { x: x, y: y };
     m.chaseLostT = 0;
     m.repathT = 0;
+    m.path = null;
+    m.pauseT = 0;
+    m.spotTarget = null;
+    m.searchPoint = null;
+    m.checkT = 0;
     m.clickT = 0.3;
     setMonsterState('chase');
     if (!wasChase) {
@@ -574,11 +637,25 @@
   function choosePatrolTarget() {
     var m = monster;
     var best = null, bestScore = -1e9;
+    var memory = m.memoryT > 0 && m.lastKnown;
     for (var i = 0; i < level.patrolNodes.length; i++) {
       var n = level.patrolNodes[i];
       var d = dist(m.x, m.y, n.x + 0.5, n.y + 0.5);
       if (d < 5.5) continue;
       var score = rnd() * 1.2;
+      if (memory) {
+        // 搜索结束后的 20 秒，它仍在最后一次听见你的区域附近打转
+        var dl = dist(n.x + 0.5, n.y + 0.5, m.lastKnown.x, m.lastKnown.y);
+        score += Math.max(0, 1 - dl / 14) * 2.8;
+      } else if (S.power > 0) {
+        // 没救回的电闸是它重点看守的东西
+        for (var b = 0; b < breakers.length; b++) {
+          if (!breakers[b].on) {
+            var db = dist(n.x + 0.5, n.y + 0.5, breakers[b].x + 0.5, breakers[b].y + 0.5);
+            if (db < 7) score += 1.1 * (1 - db / 7);
+          }
+        }
+      }
       if (S.gateUnlocked && n.y >= 30) score += 0.9;   // 合闸后偏向守南门
       if (S.power >= 1 && n.x > 30 && n.y < 20) score += 0.2;
       if (m.lastNode && n.x === m.lastNode.x && n.y === m.lastNode.y) score -= 1.4;
@@ -591,11 +668,11 @@
   }
 
   // ---------- 怪物移动 ----------
-  function monsterFollow(dt, speed, tx, ty) {
+  function monsterFollow(dt, speed, tx, ty, repath) {
     var m = monster;
     m.repathT -= dt;
     if (!m.path || m.repathT <= 0) {
-      m.repathT = 0.5;
+      m.repathT = repath || 0.5;
       m.path = findPath(m.x, m.y, tx, ty, monsterSolidAt);
       m.pathIdx = 0;
     }
@@ -630,6 +707,25 @@
     m.animT += dt;
     m.clickT -= dt;
     m.stepT -= dt;
+    if (m.memoryT > 0) m.memoryT -= dt;
+
+    // 它会不时停下来「听」：搜索/巡逻时突然定格 1.35 秒，同时发出那声「哒」。
+    // 这是玩家判断它位置的窗口，也是「它真的在找你」的表演。
+    m.listenT -= dt;
+    if (m.pauseT > 0) {
+      m.pauseT -= dt;
+      m.dir += dt * 1.15;
+      if (m.pauseT <= 0) {
+        m.listenT = CFG.monster.listenInterval * randRange(0.7, 1.3);
+        m.path = null;
+        m.repathT = 0;
+      }
+    } else if (m.listenT <= 0 && (m.state === 'search' || m.state === 'patrol')) {
+      m.pauseT = CFG.monster.listenTime;
+      m.listenT = CFG.monster.listenInterval * randRange(0.8, 1.3);
+      m.clickT = Math.min(m.clickT, 0.05);
+      logEvent('monster-listen', { state: m.state });
+    }
 
     if (m.clickT <= 0) {
       var iv = CLICK_INTERVAL[m.state] || 3.0;
@@ -649,6 +745,22 @@
       case 'chase': updateChase(dt); break;
     }
 
+    // 防卡死：如果它卡在墙边/家具上一秒没挪动，就重新找路
+    m.moveCheckT += dt;
+    if (m.moveCheckT > 1.0) {
+      var moved = dist(m.x, m.y, m.lastMoveCheck.x, m.lastMoveCheck.y);
+      if (moved < 0.12 && m.pauseT <= 0) {
+        m.path = null;
+        m.repathT = 0;
+        m.waitT = 0;
+        m.searchPoint = null;
+        if (m.state === 'patrol' || m.state === 'investigate') m.target = null;
+        logEvent('monster-unstuck', { state: m.state });
+      }
+      m.lastMoveCheck = { x: m.x, y: m.y };
+      m.moveCheckT = 0;
+    }
+
     // 接触即死（无论它是否处于追逐状态）
     if (S.mode === 'playing' && !player.hidden) {
       if (dist(m.x, m.y, player.x, player.y) < CFG.monster.contactDist) {
@@ -659,6 +771,7 @@
 
   function updatePatrol(dt) {
     var m = monster;
+    if (m.pauseT > 0) return;
     if (m.waitT > 0) {
       m.waitT -= dt;
       return;
@@ -666,7 +779,7 @@
     if (!m.target) m.target = choosePatrolTarget();
     monsterFollow(dt, patrolSpeed(), m.target.x, m.target.y);
     if (dist(m.x, m.y, m.target.x, m.target.y) < 0.6) {
-      m.waitT = randRange(0.8, 2.0);
+      m.waitT = m.memoryT > 0 ? randRange(0.4, 1.0) : randRange(0.8, 2.0);
       m.target = choosePatrolTarget();
       m.path = null;
     }
@@ -676,21 +789,47 @@
     var m = monster;
     if (!m.target) { setMonsterState('patrol'); return; }
     monsterFollow(dt, CFG.monster.investigateSpeed + aggression() * 0.04, m.target.x, m.target.y);
-    if (dist(m.x, m.y, m.target.x, m.target.y) < 0.8) {
-      m.target = null;
-      m.path = null;
-      m.spotTarget = null;
-      m.checkT = 0;
-      m.searchPoint = null;
-      m.searchT = searchDuration();
-      setMonsterState('search');
-      audio.sfx('monster_search', m.x, m.y);
+    if (dist(m.x, m.y, m.target.x, m.target.y) < 0.8) enterSearch('investigate-arrived');
+  }
+
+  // 进入「搜索」：在最后听见你的位置附近游荡，逐个翻开附近的躲藏点。
+  function enterSearch(reason) {
+    var m = monster;
+    m.target = null;
+    m.path = null;
+    m.repathT = 0;
+    m.spotTarget = null;
+    m.checkT = 0;
+    m.searchPoint = null;
+    m.searchT = searchDuration();
+    m.listenT = randRange(2.0, 4.5);
+    m.pauseT = 0;
+    setMonsterState('search');
+    audio.sfx('monster_search', m.x, m.y);
+    logEvent('search-start', { reason: reason, d: +dist(m.x, m.y, player.x, player.y).toFixed(1) });
+    if (reason === 'chase-lost' && !S.huntTipPlayed) {
+      S.huntTipPlayed = true;
+      toast('它没有离开。', '它正在这片阴影里，一寸一寸地找你。');
     }
   }
 
   function updateSearch(dt) {
     var m = monster;
     m.searchT -= dt;
+
+    // 搜索结束：它不会走远，接下来 20 秒仍在最后一次听见你的区域附近打转
+    if (m.searchT <= 0) {
+      m.spotTarget = null;
+      m.checkT = 0;
+      m.searchPoint = null;
+      m.target = null;
+      m.path = null;
+      m.memoryT = CFG.monster.huntMemory;
+      setMonsterState('patrol');
+      logEvent('search-end', {});
+      return;
+    }
+    if (m.pauseT > 0) return;   // 站着听，不动
 
     // 1) 正在检查某个躲藏点
     if (m.spotTarget) {
@@ -700,54 +839,51 @@
         if (m.checkT === 0) audio.sfx('monster_search', m.x, m.y);
         m.checkT += dt;
         m.dir = Math.atan2(sp.y + 0.5 - m.y, sp.x + 0.5 - m.x);
-        if (m.checkT >= CFG.monster.spotCheckTime) {
-          finishSpotCheck(sp);
-        }
+        if (m.checkT >= CFG.monster.spotCheckTime) finishSpotCheck(sp);
       } else {
         monsterFollow(dt, CFG.monster.searchSpeed, sp.x + 0.5, sp.y + 0.5);
       }
-    } else {
-      // 2) 找附近没检查过的躲藏点
-      if (m.stateT > 0.4) {
-        var cand = null, candD = 1e9;
-        for (var i = 0; i < hideSpots.length; i++) {
-          var s = hideSpots[i];
-          if (S.runTime - s.checkedAt < 22) continue;
-          var dd = dist(m.x, m.y, s.x + 0.5, s.y + 0.5);
-          var dl = dist(m.lastHeard.x, m.lastHeard.y, s.x + 0.5, s.y + 0.5);
-          if (dd < 7.5 && dl < 6.5 && dd < candD) { candD = dd; cand = s; }
-        }
-        if (cand) {
-          m.spotTarget = cand;
-          m.checkT = 0;
-          m.path = null;
-          m.repathT = 0;
-          return;
-        }
-      }
-      // 3) 在最后听见的位置附近游荡
-      if (!m.searchPoint || dist(m.x, m.y, m.searchPoint.x, m.searchPoint.y) < 0.7) {
-        var tries = 0;
-        do {
-          var ang = rnd() * TAU, rr = 1.5 + rnd() * 4.2;
-          var px2 = m.lastHeard.x + Math.cos(ang) * rr;
-          var py2 = m.lastHeard.y + Math.sin(ang) * rr;
-          tries++;
-        } while (tries < 8 && solidAt(Math.floor(px2), Math.floor(py2)));
-        m.searchPoint = { x: px2, y: py2 };
-        m.path = null;
-        m.repathT = 0;
-      }
-      monsterFollow(dt, CFG.monster.searchSpeed, m.searchPoint.x, m.searchPoint.y);
+      return;
     }
 
-    if (m.searchT <= 0) {
-      m.spotTarget = null;
-      m.checkT = 0;
-      m.target = null;
-      m.path = null;
-      setMonsterState('patrol');
+    // 2) 优先检查最后听见位置附近的躲藏点（它知道声音大概在哪）
+    if (m.stateT > 0.35) {
+      var cand = null, candScore = 1e9;
+      for (var i = 0; i < hideSpots.length; i++) {
+        var s = hideSpots[i];
+        if (S.runTime - s.checkedAt < 18) continue;
+        var dd = dist(m.x, m.y, s.x + 0.5, s.y + 0.5);
+        var dl = dist(m.lastHeard.x, m.lastHeard.y, s.x + 0.5, s.y + 0.5);
+        if (dd > CFG.monster.spotSearchRadius || dl > CFG.monster.spotHeardRadius) continue;
+        var score = dd + dl * 0.6 + rnd() * 1.5;
+        if (score < candScore) { candScore = score; cand = s; }
+      }
+      if (cand) {
+        m.spotTarget = cand;
+        m.checkT = 0;
+        m.path = null;
+        m.repathT = 0;
+        logEvent('spot-target', { type: cand.type });
+        return;
+      }
     }
+
+    // 3) 在最后听见的位置附近游荡
+    if (!m.searchPoint || dist(m.x, m.y, m.searchPoint.x, m.searchPoint.y) < 0.7) {
+      var tries = 0;
+      var px2 = m.lastHeard.x, py2 = m.lastHeard.y;
+      do {
+        var ang = rnd() * TAU, rr = 1.2 + rnd() * 5.0;
+        px2 = m.lastHeard.x + Math.cos(ang) * rr;
+        py2 = m.lastHeard.y + Math.sin(ang) * rr;
+        tries++;
+      } while (tries < 10 && (solidAt(Math.floor(px2), Math.floor(py2)) ||
+        Math.abs(px2 - m.x) + Math.abs(py2 - m.y) < 1.5));
+      m.searchPoint = { x: px2, y: py2 };
+      m.path = null;
+      m.repathT = 0;
+    }
+    monsterFollow(dt, CFG.monster.searchSpeed, m.searchPoint.x, m.searchPoint.y);
   }
 
   function finishSpotCheck(spot) {
@@ -759,8 +895,10 @@
     m.searchPoint = null;
     if (player.hidden && player.hidden.x === spot.x && player.hidden.y === spot.y) {
       if (player.holdingBreath && player.breath > 0.05) {
+        // 它就在你面前，但你屏住了呼吸——它什么都没听见，又退开了
         logEvent('spot-check-survived', {});
         spawnRipple(m.x, m.y, 1.2, 'monster', 1.0);
+        m.searchT = Math.max(m.searchT, 7.0);
       } else {
         killPlayer('hidden', spot);
       }
@@ -773,21 +911,32 @@
   function updateChase(dt) {
     var m = monster;
     m.chaseLostT += dt;
+
+    // 预判：朝着你跑动的方向多追半步（上限 2.6 格）——追一个会拐弯的人，而不是一个点
     var tx = m.lastHeard.x, ty = m.lastHeard.y;
-    monsterFollow(dt, chaseSpeed(), tx, ty);
+    if (m.chaseLostT < 1.2) {
+      var lead = CFG.monster.chaseLead;
+      var lx = m.heardVel.x * lead, ly = m.heardVel.y * lead;
+      var mag = Math.hypot(lx, ly);
+      var cap = CFG.monster.chaseLeadMax;
+      if (mag > cap) { lx = lx / mag * cap; ly = ly / mag * cap; }
+      var px3 = tx + lx, py3 = ty + ly;
+      if (!solidAt(Math.floor(px3), Math.floor(py3))) { tx = px3; ty = py3; }
+    }
+    monsterFollow(dt, chaseSpeed(), tx, ty, 0.22);
+
     var d = dist(m.x, m.y, player.x, player.y);
     if (!player.hidden && d < CFG.monster.killDist) {
       killPlayer('caught');
       return;
     }
-    if (m.chaseLostT > CFG.monster.giveUpTime) {
-      m.spotTarget = null;
-      m.checkT = 0;
-      m.searchPoint = null;
-      m.searchT = searchDuration();
-      setMonsterState('search');
-      audio.sfx('monster_search', m.x, m.y);
+
+    // 已经跑到最后声源、却没有新的声音 → 立刻开始搜索（不再傻站到超时）
+    if (m.chaseLostT > 0.7 && dist(m.x, m.y, m.lastHeard.x, m.lastHeard.y) < 1.0) {
+      enterSearch('chase-arrived');
+      return;
     }
+    if (m.chaseLostT > CFG.monster.giveUpTime) enterSearch('chase-lost');
   }
 
   // ============================ 玩家 ============================
